@@ -21,7 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <stdbool.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -31,7 +31,8 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define DEBOUNCE_DELAY 500 // 500 ms debounce delay
+#define BLINK_DELAY 250 // 250 ms blink delay (2Hz)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -40,19 +41,92 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-
+uint32_t last_left_press_time = 0;
+uint32_t last_right_press_time = 0;
+uint8_t left_press_count = 0;
+uint8_t right_press_count = 0;
+bool left_blinking = false;
+bool right_blinking = false;
+uint32_t left_blink_start_time = 0;
+uint32_t right_blink_start_time = 0;
+uint8_t left_blink_counter = 0;
+uint8_t right_blink_counter = 0;
+uint8_t left_pressed = 0;
+uint8_t right_pressed = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
+static void MX_GPIO_Init(void);
+static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+  // Check if the interrupt was triggered by the left button
+  if (GPIO_Pin == LEFT_BUTTON_Pin) {
+    HAL_GPIO_TogglePin(LED_LEFT_GPIO_Port, LED_LEFT_Pin); // Toggle the state of the left LED
+    HAL_UART_Transmit(&huart2, "IZQUIERDA\r\n", 11, HAL_MAX_DELAY); // Transmit "IZQUIERDA" message over UART
+    left_pressed = 1; // Set left_pressed flag to 1
+  }
+
+  // Check if the interrupt was triggered by the right button
+  if (GPIO_Pin == RIGHT_BUTTON_Pin) {
+    HAL_GPIO_TogglePin(LED_RIGHT_GPIO_Port, LED_RIGHT_Pin); // Toggle the state of the right LED
+    HAL_UART_Transmit(&huart2, "DERECHA\r\n", 9, HAL_MAX_DELAY); // Transmit "DERECHA" message over UART
+    right_pressed = 1; // Set right_pressed flag to 1
+  }
+
+  // Get the current tick count (in milliseconds) since the program started
+  uint32_t current_time = HAL_GetTick();
+
+  // If the interrupt was triggered by the left button
+  if (GPIO_Pin == LEFT_BUTTON_Pin) {
+    HAL_UART_Transmit(&huart2, (uint8_t*)"IZQUIERDA\r\n", 11, HAL_MAX_DELAY); // Transmit "IZQUIERDA" message over UART
+
+    // Check if the last press was within the debounce period
+    if ((current_time - last_left_press_time) < DEBOUNCE_DELAY) {
+      left_press_count++; // Increment the left press count
+      // If the button was pressed twice within the debounce period
+      if (left_press_count >= 2) {
+        left_blinking = true; // Set the left blinking flag to true for continuous blinking
+      }
+    } else {
+      // If the button was not pressed within the debounce period, reset the press count
+      left_press_count = 1; // Reset the left press count to 1
+      left_blink_counter = 0; // Reset the left blink counter to 0
+      left_blink_start_time = current_time; // Update the start time for blinking
+    }
+    last_left_press_time = current_time; // Update the last left press time
+  }
+
+  // If the interrupt was triggered by the right button
+  if (GPIO_Pin == RIGHT_BUTTON_Pin) {
+    HAL_UART_Transmit(&huart2, (uint8_t*)"DERECHA\r\n", 9, HAL_MAX_DELAY); // Transmit "DERECHA" message over UART
+
+    // Check if the last press was within the debounce period
+    if ((current_time - last_right_press_time) < DEBOUNCE_DELAY) {
+      right_press_count++; // Increment the right press count
+      // If the button was pressed twice within the debounce period
+      if (right_press_count >= 2) {
+        right_blinking = true; // Set the right blinking flag to true for continuous blinking
+      }
+    } else {
+      // If the button was not pressed within the debounce period, reset the press count
+      right_press_count = 1; // Reset the right press count to 1
+      right_blink_counter = 0; // Reset the right blink counter to 0
+      right_blink_start_time = current_time; // Update the start time for blinking
+    }
+    last_right_press_time = current_time; // Update the last right press time
+  }
+}
 
 /* USER CODE END 0 */
 
@@ -62,7 +136,6 @@ void SystemClock_Config(void);
   */
 int main(void)
 {
-
   /* USER CODE BEGIN 1 */
 
   /* USER CODE END 1 */
@@ -84,8 +157,10 @@ int main(void)
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
+  MX_GPIO_Init();
+  MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-
+  HAL_UART_Transmit(&huart2, (uint8_t*)"INICIAR\r\n", 9, HAL_MAX_DELAY);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -95,7 +170,78 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-  }
+
+	  if (left_pressed != 0) {
+	  		  left_pressed = 0;
+	  		  for (uint8_t i = 0; i < 6; i++) {
+	  			  HAL_GPIO_TogglePin(LED_LEFT_GPIO_Port, LED_LEFT_Pin);
+	  			  HAL_Delay(250);
+	  		  }
+	  		  HAL_GPIO_WritePin(LED_LEFT_GPIO_Port, LED_LEFT_Pin, GPIO_PIN_SET);
+	  	  }
+	  if (right_pressed != 0) {
+	  		  right_pressed = 0;
+	  		  for (uint8_t i = 0; i < 6; i++) {
+	  			  HAL_GPIO_TogglePin(LED_RIGHT_GPIO_Port, LED_RIGHT_Pin);
+	  			  HAL_Delay(250);
+	  		  }
+	  		  HAL_GPIO_WritePin(LED_RIGHT_GPIO_Port, LED_RIGHT_Pin, GPIO_PIN_SET);
+	  	  }
+	  uint32_t current_time = HAL_GetTick();
+
+	  // Handle left button single press blink
+	  if (left_press_count == 1 && (current_time - left_blink_start_time) < (3 * BLINK_DELAY * 2)) {
+	    if ((current_time - left_blink_start_time) >= (left_blink_counter * BLINK_DELAY)) {
+	      HAL_GPIO_TogglePin(LED_LEFT_GPIO_Port, LED_LEFT_Pin);
+	      left_blink_counter++;
+	    }
+	    if (left_blink_counter >= 6) {
+	      HAL_GPIO_WritePin(LED_LEFT_GPIO_Port, LED_LEFT_Pin, GPIO_PIN_RESET);
+	      left_press_count = 0;  // Reset press count after 3 blinks
+	    }
+	  }
+
+	  // Handle right button single press blink
+	  if (right_press_count == 1 && (current_time - right_blink_start_time) < (3 * BLINK_DELAY * 2)) {
+	    if ((current_time - right_blink_start_time) >= (right_blink_counter * BLINK_DELAY)) {
+	      HAL_GPIO_TogglePin(LED_RIGHT_GPIO_Port, LED_RIGHT_Pin);
+	      right_blink_counter++;
+	    }
+	    if (right_blink_counter >= 6) {
+	      HAL_GPIO_WritePin(LED_RIGHT_GPIO_Port, LED_RIGHT_Pin, GPIO_PIN_RESET);
+	      right_press_count = 0;  // Reset press count after 3 blinks
+	    }
+	  }
+
+	  // Handle left button continuous blink
+	  if (left_blinking) {
+	    if ((current_time % (BLINK_DELAY * 2)) < BLINK_DELAY) {
+	      HAL_GPIO_WritePin(LED_LEFT_GPIO_Port, LED_LEFT_Pin, GPIO_PIN_SET);
+	    } else {
+	      HAL_GPIO_WritePin(LED_LEFT_GPIO_Port, LED_LEFT_Pin, GPIO_PIN_RESET);
+	    }
+	  }
+
+	  // Handle right button continuous blink
+	  if (right_blinking) {
+	    if ((current_time % (BLINK_DELAY * 2)) < BLINK_DELAY) {
+	      HAL_GPIO_WritePin(LED_RIGHT_GPIO_Port, LED_RIGHT_Pin, GPIO_PIN_SET);
+	    } else {
+	      HAL_GPIO_WritePin(LED_RIGHT_GPIO_Port, LED_RIGHT_Pin, GPIO_PIN_RESET);
+	    }
+	  }
+
+	  // Reset press counts if no recent presses within the debounce period
+	  if ((current_time - last_left_press_time) > DEBOUNCE_DELAY) {
+	    left_press_count = 0;
+	  }
+
+	  if ((current_time - last_right_press_time) > DEBOUNCE_DELAY) {
+	    right_press_count = 0;
+	  }
+
+	  }
+	  /* USER CODE END 3 */
   /* USER CODE END 3 */
 }
 
@@ -141,6 +287,93 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+}
+
+/**
+  * @brief USART2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART2_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART2_Init 0 */
+
+  /* USER CODE END USART2_Init 0 */
+
+  /* USER CODE BEGIN USART2_Init 1 */
+
+  /* USER CODE END USART2_Init 1 */
+  huart2.Instance = USART2;
+  huart2.Init.BaudRate = 115200;
+  huart2.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2.Init.StopBits = UART_STOPBITS_1;
+  huart2.Init.Parity = UART_PARITY_NONE;
+  huart2.Init.Mode = UART_MODE_TX_RX;
+  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart2.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart2.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART2_Init 2 */
+
+  /* USER CODE END USART2_Init 2 */
+
+}
+
+/**
+  * @brief GPIO Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_GPIO_Init(void)
+{
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+/* USER CODE BEGIN MX_GPIO_Init_1 */
+/* USER CODE END MX_GPIO_Init_1 */
+
+  /* GPIO Ports Clock Enable */
+  __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(LED_LEFT_GPIO_Port, LED_LEFT_Pin, GPIO_PIN_SET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(LED_RIGHT_GPIO_Port, LED_RIGHT_Pin, GPIO_PIN_SET);
+
+  /*Configure GPIO pins : LEFT_BUTTON_Pin RIGHT_BUTTON_Pin */
+  GPIO_InitStruct.Pin = LEFT_BUTTON_Pin|RIGHT_BUTTON_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : LED_LEFT_Pin */
+  GPIO_InitStruct.Pin = LED_LEFT_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(LED_LEFT_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : LED_RIGHT_Pin */
+  GPIO_InitStruct.Pin = LED_RIGHT_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(LED_RIGHT_GPIO_Port, &GPIO_InitStruct);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI1_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI4_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI4_IRQn);
+
+/* USER CODE BEGIN MX_GPIO_Init_2 */
+/* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
